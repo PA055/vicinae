@@ -1,5 +1,6 @@
 #include "data-device.hpp"
 #include <iostream>
+#include <QDebug>
 
 void DataDevice::dataOffer(void *data, zwlr_data_control_device_v1 *device, zwlr_data_control_offer_v1 *id) {
   auto self = static_cast<DataDevice *>(data);
@@ -16,6 +17,8 @@ void DataDevice::selection(void *data, zwlr_data_control_device_v1 *device, zwlr
   auto self = static_cast<DataDevice *>(data);
 
   if (!self->m_pendingOffer) return;
+
+  qInfo() << "new selection";
 
   // safety debug check, this should normally never happen
   if (id != self->m_pendingOffer->pointer()) {

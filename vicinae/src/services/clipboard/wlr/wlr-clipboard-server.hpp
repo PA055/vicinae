@@ -1,25 +1,36 @@
 #pragma once
-#include "proto/wlr-clipboard.pb.h"
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <netinet/in.h>
+#include <memory>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <wayland-client-core.h>
+#include <wayland-client-protocol.h>
+#include <wayland-util.h>
+#include "data-control-client.hpp"
 #include "services/clipboard/clipboard-server.hpp"
-#include <qprocess.h>
 
-class WlrClipboardServer : public AbstractClipboardServer {
-  std::vector<uint8_t> _message;
-  uint32_t _messageLength = 0;
-  QProcess *process = nullptr;
-
-  bool isAlive() const override;
-
-  void handleMessage(const proto::ext::wlrclip::Selection &selection);
-  void handleRead();
-  void handleReadError();
-  void handleExit(int code, QProcess::ExitStatus status);
+class WlrClipboardServer : public AbstractClipboardServer,
+                           public WaylandRegistry::Listener,
+                           public DataDevice::Listener {
 
 public:
   bool start() override;
+  WlrClipboardServer();
+
+  bool isAlive() const override;
   bool isActivatable() const override;
   QString id() const override;
   int activationPriority() const override;
 
-  WlrClipboardServer();
+private:
+  std::unique_ptr<WaylandRegistry> _registry;
+  std::unique_ptr<DataControlManager> _dcm;
+  std::unique_ptr<WaylandSeat> _seat;
+
+  void global(WaylandRegistry &reg, uint32_t name, const char *interface, uint32_t version) override;
+  void selection(DataDevice &device, DataOffer &offer) override;
 };

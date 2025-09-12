@@ -614,11 +614,20 @@ if (UNIX AND NOT APPLE)
 		src/services/window-manager/gnome/gnome-listener.cpp
 		src/services/window-manager/wayland/wayland.cpp
 
+
+		src/services/clipboard/wlr/data-control-client.cpp
+		src/services/clipboard/wlr/display.cpp
+		src/services/clipboard/wlr/registry.cpp
+		src/services/clipboard/wlr/seat.cpp
+		src/services/clipboard/wlr/data-device.cpp
+		src/services/clipboard/wlr/data-offer.cpp
+
 		# Hyprland
 		# End Hyprland
 	)
     include("Wayland")
     wayland_generate_protocol("${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-foreign-toplevel-management-unstable-v1.xml")
+    wayland_generate_protocol("${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-data-control-unstable-v1.xml")
 endif()
 	
 

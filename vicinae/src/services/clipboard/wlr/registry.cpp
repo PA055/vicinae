@@ -26,7 +26,7 @@ WaylandRegistry::WaylandRegistry(wl_registry *registry) : _registry(registry) {
 }
 
 WaylandRegistry::~WaylandRegistry() {
-  if (_registry) { wl_registry_destroy(_registry); }
+  // if (_registry) { wl_registry_destroy(_registry); }
 }
 
 void WaylandRegistry::addListener(Listener *lstn) { listeners.push_back(lstn); }

@@ -1,6 +1,8 @@
 #pragma once
 #include "display.hpp"
 #include "wlr-data-control-unstable-v1-client-protocol.h"
+#include <qcontainerfwd.h>
+#include <qfuture.h>
 #include <vector>
 #include <string>
 
@@ -21,7 +23,7 @@ public:
    * The caller is responsible for the cleaning of this file after they are done
    * processing it.
    */
-  std::string receive(const std::string &mime);
+  QFuture<QByteArray> receive(const std::string &mime);
   const std::vector<std::string> &mimes() const;
   zwlr_data_control_offer_v1 *pointer() const { return _offer; }
 

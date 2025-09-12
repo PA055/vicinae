@@ -1,8 +1,9 @@
 #include "display.hpp"
 
 WaylandDisplay::WaylandDisplay() { _display = wl_display_connect(nullptr); }
+WaylandDisplay::WaylandDisplay(wl_display *display) { _display = display; }
 WaylandDisplay::~WaylandDisplay() {
-  if (_display) { wl_display_disconnect(_display); }
+  // if (_display) { wl_display_disconnect(_display); }
 };
 
 std::unique_ptr<WaylandRegistry> WaylandDisplay::registry() const {

@@ -166,10 +166,6 @@ add_compile_definitions(BUILD_INFO="${BUILD_INFO}")
 
 add_subdirectory(vicinae)
 
-if (UNIX AND NOT APPLE)
-	add_subdirectory(wlr-clip)
-endif()
-
 set(INSTALL_SHARE ${CMAKE_INSTALL_PREFIX}/share)
 set(VICINAE_INSTALL_SHARE ${INSTALL_SHARE}/vicinae)
 

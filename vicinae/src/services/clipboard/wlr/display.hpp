@@ -9,6 +9,7 @@ class WaylandDisplay {
 
 public:
   WaylandDisplay();
+  WaylandDisplay(wl_display *display);
   ~WaylandDisplay();
 
   std::unique_ptr<WaylandRegistry> registry() const;

@@ -1,91 +1,99 @@
 #include "wlr-clipboard-server.hpp"
-#include "pid-file/pid-file.hpp"
-#include "proto/wlr-clipboard.pb.h"
-#include "services/clipboard/clipboard-server.hpp"
+#include <QtConcurrent/qtconcurrentmap.h>
+#include <iostream>
+#include <ranges>
+#include <qapplication.h>
+#include <qcontainerfwd.h>
+#include <qfuture.h>
+#include <qlist.h>
+#include <qtimer.h>
+#include <wayland-client-core.h>
+#include <wayland-client-protocol.h>
+#include "services/clipboard/wlr/data-device.hpp"
 #include "utils/environment.hpp"
-#include <QtCore>
-#include <QApplication>
-#include <netinet/in.h>
-#include <qlogging.h>
-#include <qprocess.h>
-#include <qdebug.h>
-#include <qresource.h>
-#include <qstringview.h>
 
-bool WlrClipboardServer::isAlive() const { return process->isOpen(); }
+void WlrClipboardServer::global(WaylandRegistry &reg, uint32_t name, const char *interface,
+                                uint32_t version) {
+  if (strcmp(interface, zwlr_data_control_manager_v1_interface.name) == 0) {
+    auto manager = reg.bind<zwlr_data_control_manager_v1>(name, &zwlr_data_control_manager_v1_interface,
+                                                          std::min(version, 1u));
+    _dcm = std::make_unique<DataControlManager>(manager);
+  }
+
+  if (strcmp(interface, wl_seat_interface.name) == 0) {
+    _seat = std::make_unique<WaylandSeat>(reg.bind<wl_seat>(name, &wl_seat_interface, std::min(version, 1u)));
+  }
+}
+
+void WlrClipboardServer::selection(DataDevice &device, DataOffer &offer) {
+  auto mimes = offer.mimes();
+  std::vector<QFuture<QByteArray>> futures;
+
+  qDebug() << "got selection with" << mimes.size() << "mimes";
+
+  for (const auto &mime : mimes) {
+    auto future = offer.receive(mime);
+
+    break;
+  }
+
+  /*
+  QtFuture::whenAll(futures.begin(), futures.end())
+      .then([this, mimes](const QList<QFuture<QByteArray>> &list) {
+        ClipboardSelection selection;
+        selection.offers.reserve(mimes.size());
+
+        for (const auto &[future, mime] : std::views::zip(list, mimes)) {
+          ClipboardDataOffer doffer;
+
+          qDebug() << "result ready" << future.isResultReadyAt(0) << "for mime" << mime;
+          doffer.data = future.result();
+          doffer.mimeType = QString::fromStdString(mime);
+          selection.offers.emplace_back(doffer);
+        }
+
+        emit selectionAdded(selection);
+      });
+          */
+}
+
+bool WlrClipboardServer::isAlive() const { return true; }
 
 bool WlrClipboardServer::isActivatable() const {
   return Environment::isWaylandSession() && !Environment::isGnomeEnvironment();
-}
-
-void WlrClipboardServer::handleMessage(const proto::ext::wlrclip::Selection &sel) {
-  ClipboardSelection cs;
-
-  cs.offers.reserve(sel.offers().size());
-
-  for (const auto &offer : sel.offers()) {
-    cs.offers.push_back({offer.mime_type().c_str(), QByteArray::fromStdString(offer.data())});
-  }
-
-  emit selectionAdded(cs);
-}
-
-void WlrClipboardServer::handleExit(int code, QProcess::ExitStatus status) {}
+};
 
 QString WlrClipboardServer::id() const { return "wlr-clipboard"; }
 
-int WlrClipboardServer::activationPriority() const { return 1; }
+int WlrClipboardServer::activationPriority() const { return 1; };
 
 bool WlrClipboardServer::start() {
-  PidFile pidFile("wlr-clip");
-  int maxWaitForStart = 5000;
+  auto display = std::make_unique<WaylandDisplay>(
+      qApp->nativeInterface<QNativeInterface::QWaylandApplication>()->display());
+  _seat =
+      std::make_unique<WaylandSeat>(qApp->nativeInterface<QNativeInterface::QWaylandApplication>()->seat());
+  _registry = display->registry();
 
-  if (pidFile.exists() && pidFile.kill()) { qInfo() << "Killed existing wlr-clip instance"; }
+  _registry->addListener(this);
+  display->roundtrip();
 
-  process = new QProcess;
+  if (!_dcm) { throw std::runtime_error("zwlr data control is not available"); }
+  if (!_seat) { throw std::runtime_error("seat is not available"); }
 
-  process->start(WLR_CLIP_BIN, {});
+  auto dev = _dcm->getDataDevice(*_seat.get()).release();
 
-  if (!process->waitForStarted(maxWaitForStart)) {
-    qCritical() << "Failed to start:" << WLR_CLIP_BIN << process->errorString();
-    return false;
+  dev->registerListener(this);
+  display->roundtrip();
+
+  /*
+  for (;;) {
+    try {
+      if (display->dispatch() == -1) { exit(1); }
+    } catch (const std::exception &e) { std::cerr << "Uncaught exception: " << e.what() << std::endl; }
   }
+  */
 
-  pidFile.write(process->processId());
-
-  connect(process, &QProcess::readyReadStandardOutput, this, &WlrClipboardServer::handleRead);
-  connect(process, &QProcess::readyReadStandardError, this, &WlrClipboardServer::handleReadError);
-  connect(process, &QProcess::finished, this, &WlrClipboardServer::handleExit);
-
-  return process;
+  return true;
 }
 
-void WlrClipboardServer::handleReadError() { QTextStream(stderr) << process->readAllStandardError(); }
-
-void WlrClipboardServer::handleRead() {
-  auto array = process->readAllStandardOutput();
-  auto _buf = array.constData();
-
-  _message.insert(_message.end(), _buf, _buf + array.size());
-
-  if (_messageLength == 0 && _message.size() > sizeof(uint32_t)) {
-    _messageLength = ntohl(*reinterpret_cast<uint32_t *>(_message.data()));
-    _message.erase(_message.begin(), _message.begin() + sizeof(uint32_t));
-  }
-
-  if (_message.size() >= _messageLength) {
-    std::string data(_message.begin(), _message.begin() + _messageLength);
-    proto::ext::wlrclip::Selection selection;
-
-    if (!selection.ParseFromString(data)) {
-      qWarning() << "Failed to parse selection";
-    } else {
-      handleMessage(selection);
-    }
-
-    _message.erase(_message.begin(), _message.begin() + _messageLength);
-    _messageLength = 0;
-  }
-}
-
-WlrClipboardServer::WlrClipboardServer() {}
+WlrClipboardServer::WlrClipboardServer() : _dcm(nullptr), _seat(nullptr) {}
