@@ -32,9 +32,10 @@ void WlrClipboardServer::selection(DataDevice &device, DataOffer &offer) {
   qDebug() << "got selection with" << mimes.size() << "mimes";
 
   for (const auto &mime : mimes) {
-    auto future = offer.receive(mime);
-
-    break;
+    if (mime != "application/x-qt-image") {
+      auto future = offer.receive(mime);
+      break;
+    }
   }
 
   /*
